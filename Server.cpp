@@ -10,6 +10,11 @@
 #include <string.h>
 #include <cstdlib>
 
+#include "Task.h"
+#include "ThreadPool.h"
+
+#define THREADS_NUM 5
+
 #define MAX_CONNECTED_CLIENTS 10
 #define MAX_COMMAND_LENGTH 50
 
@@ -17,6 +22,12 @@ using namespace std;
 
 static void* acceptClient(void*);
 static void* getCommand(void*);
+
+void* getCommand(void *server);
+
+ThreadPool pool(THREADS_NUM);
+vector<Task *> tasks;
+Task *task;
 
 pthread_mutex_t lock_mutex;
 
@@ -54,6 +65,12 @@ void Server::start() {
 }
 
 static void* acceptClient(void* server) {
+    /*
+    ThreadPool pool(THREADS_NUM);
+    //Task *tasks[TASKS_NUM];
+    Task *task;
+    */
+
     Server* hostServer = (Server*)server;
     int serverSocket = hostServer->getServerSocket();
 
@@ -71,14 +88,23 @@ static void* acceptClient(void* server) {
         if (clientSocket == -1)
             throw "Error on accept client";
         hostServer->setClientSocket(clientSocket);
+
+        //
+        task = new Task(getCommand, (void *)hostServer);
+        tasks.push_back(task);
+        pool.addTask(task);
+        //
+        /*
         pthread_t threadId;
         //hostServer->threads.push_back(thread);
         //int numberOfThreads = (hostServer->threads).size()-1;
-        int rc = pthread_create(&threadId/*(hostServer->threads[numberOfThreads])*/, NULL, &getCommand, (void *) hostServer);
+        //(hostServer->threads[numberOfThreads])
+        int rc = pthread_create(&threadId, NULL, &getCommand, (void *) hostServer);
         if (rc) {
             cout << "Error: unable to create thread, " << rc << endl;
             exit(-1);
         }
+        */
     }
 }
 
@@ -292,6 +318,13 @@ void Server::setClientSocket(int newClientSocket){
 }
 
 void Server::stop() {
+
+    pool.terminate();
+    vector<Task *>::const_iterator it;
+    for (it = tasks.begin(); it != tasks.end(); it++) {
+        delete *it;
+    }
+
     //CommandsManager::getInstance(this)->stopClients();
     CommandsManager::getInstance(this)->deleteInstance();
     pthread_cancel(serverThreadId);
